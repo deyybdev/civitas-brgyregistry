@@ -40,6 +40,10 @@ function badge($status)
         'Processing'  => 'r',
         'Transferred' => 'r',
         'Deceased'    => 'x',
+        'Paid'        => 'a',
+        'Partial'     => 'p',
+        'Unpaid'      => 'x',
+        'No fee'      => 'r',
     ];
     $class = $colors[$status] ?? 'r';
     return '<span class="tag ' . $class . '">' . htmlspecialchars($status) . '</span>';

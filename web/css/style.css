@@ -453,3 +453,45 @@ select {
 :root[data-theme="dark"] .logo img {
   filter: invert(1);
 }
+
+/* ---------- Filters, actions, messages ---------- */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.filters input.f {
+  flex: 2;
+  min-width: 160px;
+}
+
+.filters select {
+  flex: 1;
+  width: auto;
+  min-width: 120px;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
+
+.actions form {
+  margin: 0;
+}
+
+.btn.danger {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.count {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+
+.msg {
+  margin: 0 0 14px;
+}
