@@ -495,3 +495,50 @@ select {
 .msg {
   margin: 0 0 14px;
 }
+
+/* ---------- Report tabs, result box, printing ---------- */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.tabs a {
+  padding: 8px 14px;
+  border: 1px solid var(--btn-border);
+  border-radius: 99px;
+  background: var(--card);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.tabs a.on {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.note.big {
+  margin-top: 0;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  font-size: 15px;
+}
+
+.mb {
+  margin-bottom: 14px;
+}
+
+@media print {
+  .sb,
+  .top .sr,
+  .top .btn,
+  .no-print {
+    display: none;
+  }
+
+  .app {
+    display: block;
+  }
+}

@@ -3,64 +3,96 @@ include "db.php";
 
 $message = "";
 $messageType = "ok";
-$selectedRequest = (int) ($_GET['pay'] ?? 0);
+$form = [
+    'resident_id' => 0, 'last_name' => '', 'first_name' => '', 'middle_name' => '',
+    'birth_date' => '', 'contact_number' => '', 'household_id' => '', 'status' => 'Active',
+];
 
-// Payment state shown as a badge.
-function payState($row)
-{
-    if ($row['fee_charged'] == 0) return 'No fee';
-    if ($row['balance'] <= 0) return 'Paid';
-    if ($row['total_paid'] > 0) return 'Partial';
-    return 'Unpaid';
-}
-
-// ----- Record a payment or update a status -----
+// ----- Save or delete (form submitted) -----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
-    $id = (int) ($_POST['request_id'] ?? 0);
     try {
-        if ($action === 'pay') {
-            $selectedRequest = $id;
-            $amount = (float) $_POST['amount'];
-            $row = callProcedure($conn, "CALL sp_record_payment(?, ?, ?)", "ids", [$id, $amount, $_POST['payment_date']]);
-            $message = "Payment recorded for request #" . $id . ". New balance: " . number_format($row['balance'], 2);
-            $selectedRequest = 0;
-        } elseif ($action === 'status') {
-            $newStatus = $_POST['new_status'];
-            $stmt = $conn->prepare("UPDATE DocumentRequest SET status = ? WHERE request_id = ? AND status <> 'Released'");
-            $stmt->bind_param("si", $newStatus, $id);
-            $stmt->execute();
-            if ($stmt->affected_rows > 0) {
-                $message = "Request #" . $id . " is now " . $newStatus . ".";
+        if ($action === 'save') {
+            $id = (int) ($_POST['resident_id'] ?? 0);
+            $last = properCase($_POST['last_name']);
+            $first = properCase($_POST['first_name']);
+            $middle = properCase($_POST['middle_name']);
+            $birth = $_POST['birth_date'];
+            $contact = trim($_POST['contact_number']) === '' ? null : trim($_POST['contact_number']);
+            $household = (int) $_POST['household_id'];
+            $status = $_POST['status'];
+
+            if ($id > 0) {
+                $stmt = $conn->prepare("UPDATE Resident SET household_id = ?, last_name = ?, first_name = ?,
+                    middle_name = ?, birth_date = ?, contact_number = ?, status = ? WHERE resident_id = ?");
+                $stmt->bind_param("issssssi", $household, $last, $first, $middle, $birth, $contact, $status, $id);
+                $stmt->execute();
+                $message = "Resident updated.";
             } else {
-                $message = "Request not found or already Released.";
-                $messageType = "err";
+                $stmt = $conn->prepare("INSERT INTO Resident (household_id, last_name, first_name, middle_name,
+                    birth_date, contact_number, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt->bind_param("issssss", $household, $last, $first, $middle, $birth, $contact, $status);
+                $stmt->execute();
+                $message = "Resident saved.";
             }
+        } elseif ($action === 'delete') {
+            $stmt = $conn->prepare("DELETE FROM Resident WHERE resident_id = ?");
+            $id = (int) $_POST['resident_id'];
+            $stmt->bind_param("i", $id);
+            $stmt->execute();
+            $message = "Resident deleted.";
         }
     } catch (mysqli_sql_exception $e) {
-        $message = friendlyError($e);   // for example: Payment exceeds remaining balance
+        $message = friendlyError($e);
         $messageType = "err";
+        if ($action === 'save') {   // keep what the user typed
+            $form = [
+                'resident_id' => $id, 'last_name' => $last, 'first_name' => $first, 'middle_name' => $middle,
+                'birth_date' => $birth, 'contact_number' => $contact ?? '', 'household_id' => $household, 'status' => $status,
+            ];
+        }
     }
 }
 
-// ----- Request list (reads the view) -----
+// ----- Load a resident into the form (Edit link) -----
+if ((int) $form['resident_id'] === 0 && isset($_GET['edit'])) {
+    $editId = (int) $_GET['edit'];
+    $stmt = $conn->prepare("SELECT resident_id, last_name, first_name, middle_name, birth_date,
+        COALESCE(contact_number, '') AS contact_number, household_id, status FROM Resident WHERE resident_id = ?");
+    $stmt->bind_param("i", $editId);
+    $stmt->execute();
+    $found = $stmt->get_result()->fetch_assoc();
+    if ($found) {
+        $form = $found;
+    }
+}
+
+// ----- Resident list with filters -----
 $q = trim($_GET['q'] ?? '');
+$purokFilter = (int) ($_GET['purok'] ?? 0);
 $statusFilter = $_GET['status'] ?? '';
 $like = "%" . $q . "%";
-$stmt = $conn->prepare("SELECT * FROM vw_request_balances
-    WHERE resident_name LIKE ? AND (? = '' OR status = ?)
-    ORDER BY request_date DESC, request_id DESC");
-$stmt->bind_param("sss", $like, $statusFilter, $statusFilter);
+
+$stmt = $conn->prepare("SELECT r.resident_id, r.last_name, r.first_name, r.middle_name, r.birth_date,
+        r.contact_number, r.status, p.purok_name, h.household_name, h.house_number, h.street
+    FROM Resident r
+    JOIN Household h ON h.household_id = r.household_id
+    JOIN Purok p ON p.purok_id = h.purok_id
+    WHERE CONCAT(r.last_name, ' ', r.first_name) LIKE ?
+      AND (? = 0 OR p.purok_id = ?)
+      AND (? = '' OR r.status = ?)
+    ORDER BY r.last_name, r.first_name");
+$stmt->bind_param("siiss", $like, $purokFilter, $purokFilter, $statusFilter, $statusFilter);
 $stmt->execute();
-$requests = $stmt->get_result();
+$residents = $stmt->get_result();
 
-$withBalance = $conn->query("SELECT request_id, resident_name, type_name, balance
-    FROM vw_request_balances WHERE balance > 0 ORDER BY request_id")->fetch_all(MYSQLI_ASSOC);
-$unreleased = $conn->query("SELECT request_id, resident_name, type_name, status
-    FROM vw_request_balances WHERE status <> 'Released' ORDER BY request_id")->fetch_all(MYSQLI_ASSOC);
+$puroks = $conn->query("SELECT purok_id, purok_name FROM Purok ORDER BY purok_id")->fetch_all(MYSQLI_ASSOC);
+$households = $conn->query("SELECT h.household_id, h.household_name, p.purok_name, h.house_number, h.street
+    FROM Household h JOIN Purok p ON p.purok_id = h.purok_id
+    ORDER BY p.purok_id, h.household_name, h.house_number")->fetch_all(MYSQLI_ASSOC);
 
-$title = "Requests & Payments";
-$active = "requests.php";
+$title = "Residents";
+$active = "residents.php";
 include "header.php";
 ?>
 <?php if ($message): ?>
@@ -69,38 +101,47 @@ include "header.php";
 
 <div class="row">
 
-    <div class="card" style="flex:2; min-width:480px">
-        <form class="filters" method="get" action="requests.php">
-            <input class="f" name="q" value="<?= h($q) ?>" placeholder="Search by resident" aria-label="Search by resident">
+    <div class="card" style="flex:2; min-width:440px">
+        <form class="filters" method="get" action="residents.php">
+            <input class="f" name="q" value="<?= h($q) ?>" placeholder="Search by name" aria-label="Search by name">
+            <select name="purok" aria-label="Purok">
+                <option value="0">All puroks</option>
+                <?php foreach ($puroks as $p): ?>
+                    <option value="<?= $p['purok_id'] ?>"<?= sel($purokFilter, $p['purok_id']) ?>><?= h($p['purok_name']) ?></option>
+                <?php endforeach; ?>
+            </select>
             <select name="status" aria-label="Status">
                 <option value="">All statuses</option>
-                <?php foreach (['Pending', 'Processing', 'Released'] as $s): ?>
+                <?php foreach (['Active', 'Inactive', 'Transferred', 'Deceased'] as $s): ?>
                     <option<?= sel($statusFilter, $s) ?>><?= $s ?></option>
                 <?php endforeach; ?>
             </select>
             <button class="btn">Filter</button>
         </form>
-        <p class="count"><?= $requests->num_rows ?> requests</p>
+        <p class="count"><?= $residents->num_rows ?> residents</p>
 
         <div class="tw">
             <table>
                 <tr>
-                    <th>Req</th><th>Resident</th><th>Document</th><th>Status</th><th>Fee</th><th>Paid</th><th>Balance</th><th>Payment</th><th></th>
+                    <th>ID</th><th>Name</th><th>Birth date</th><th>Contact</th><th>Household</th><th>Status</th><th></th>
                 </tr>
-                <?php while ($r = $requests->fetch_assoc()): ?>
+                <?php while ($r = $residents->fetch_assoc()): ?>
                     <tr>
-                        <td><?= $r['request_id'] ?></td>
-                        <td><?= h($r['resident_name']) ?></td>
-                        <td><?= h($r['type_name']) ?></td>
+                        <td><?= $r['resident_id'] ?></td>
+                        <td><a href="resident.php?id=<?= $r['resident_id'] ?>" style="color:inherit; font-weight:500"><?= h($r['last_name'] . ', ' . $r['first_name'] . ' ' . $r['middle_name']) ?></a></td>
+                        <td><?= h($r['birth_date']) ?></td>
+                        <td><?= h($r['contact_number'] ?? '-') ?></td>
+                        <td><?= h($r['household_name'] . ' (' . $r['purok_name'] . ', ' . $r['house_number'] . ' ' . $r['street'] . ')') ?></td>
                         <td><?= badge($r['status']) ?></td>
-                        <td><?= number_format($r['fee_charged'], 2) ?></td>
-                        <td><?= number_format($r['total_paid'], 2) ?></td>
-                        <td><b><?= number_format($r['balance'], 2) ?></b></td>
-                        <td><?= badge(payState($r)) ?></td>
                         <td>
-                            <?php if ($r['balance'] > 0): ?>
-                                <a class="btn s" href="requests.php?pay=<?= $r['request_id'] ?>">Pay</a>
-                            <?php endif; ?>
+                            <div class="actions">
+                                <a class="btn s" href="residents.php?edit=<?= $r['resident_id'] ?>">Edit</a>
+                                <form method="post" action="residents.php" onsubmit="return confirm('Delete this resident?')">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="resident_id" value="<?= $r['resident_id'] ?>">
+                                    <button class="btn s danger">Delete</button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                 <?php endwhile; ?>
@@ -108,58 +149,52 @@ include "header.php";
         </div>
     </div>
 
-    <div class="col" style="flex:1; min-width:290px">
+    <div class="card" style="flex:1; min-width:290px">
+        <h3><?= (int) $form['resident_id'] > 0 ? 'Edit resident #' . (int) $form['resident_id'] : 'Add resident' ?></h3>
+        <form method="post" action="residents.php">
+            <input type="hidden" name="action" value="save">
+            <input type="hidden" name="resident_id" value="<?= (int) $form['resident_id'] ?>">
 
-        <div class="card">
-            <h3>Record payment</h3>
-            <form method="post" action="requests.php">
-                <input type="hidden" name="action" value="pay">
+            <label for="last_name">Last name</label>
+            <input class="f" id="last_name" name="last_name" value="<?= h($form['last_name']) ?>" required>
 
-                <label for="pay_request">Request with balance</label>
-                <select id="pay_request" name="request_id" required>
-                    <option value="">Select request</option>
-                    <?php foreach ($withBalance as $b): ?>
-                        <option value="<?= $b['request_id'] ?>"<?= sel($selectedRequest, $b['request_id']) ?>>
-                            <?= h('#' . $b['request_id'] . ' ' . $b['resident_name'] . ' - ' . $b['type_name'] . ' (balance ' . number_format($b['balance'], 2) . ')') ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+            <label for="first_name">First name</label>
+            <input class="f" id="first_name" name="first_name" value="<?= h($form['first_name']) ?>" required>
 
-                <label for="amount">Amount</label>
-                <input class="f" id="amount" name="amount" type="number" step="0.01" required>
+            <label for="middle_name">Middle name</label>
+            <input class="f" id="middle_name" name="middle_name" value="<?= h($form['middle_name']) ?>">
 
-                <label for="payment_date">Payment date</label>
-                <input class="f" id="payment_date" name="payment_date" type="date" value="<?= date('Y-m-d') ?>" required>
+            <label for="birth_date">Birth date</label>
+            <input class="f" id="birth_date" name="birth_date" type="date" value="<?= h($form['birth_date']) ?>" required>
 
-                <button class="btn" style="margin-top:16px; width:100%">Record payment</button>
-            </form>
-        </div>
+            <label for="contact_number">Contact number</label>
+            <input class="f" id="contact_number" name="contact_number" value="<?= h($form['contact_number']) ?>" placeholder="09XXXXXXXXX">
 
-        <div class="card">
-            <h3>Update status</h3>
-            <form method="post" action="requests.php">
-                <input type="hidden" name="action" value="status">
+            <label for="household_id">Household</label>
+            <select id="household_id" name="household_id" required>
+                <option value="">Select household</option>
+                <?php foreach ($households as $hh): ?>
+                    <option value="<?= $hh['household_id'] ?>"<?= sel($form['household_id'], $hh['household_id']) ?>>
+                        <?= h($hh['household_name'] . ' (' . $hh['purok_name'] . ', ' . $hh['house_number'] . ' ' . $hh['street'] . ')') ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
 
-                <label for="status_request">Request not yet Released</label>
-                <select id="status_request" name="request_id" required>
-                    <option value="">Select request</option>
-                    <?php foreach ($unreleased as $u): ?>
-                        <option value="<?= $u['request_id'] ?>">
-                            <?= h('#' . $u['request_id'] . ' ' . $u['resident_name'] . ' - ' . $u['type_name'] . ' (' . $u['status'] . ')') ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+            <label for="status">Status</label>
+            <select id="status" name="status">
+                <?php foreach (['Active', 'Inactive', 'Transferred', 'Deceased'] as $s): ?>
+                    <option<?= sel($form['status'], $s) ?>><?= $s ?></option>
+                <?php endforeach; ?>
+            </select>
 
-                <label for="new_status">New status</label>
-                <select id="new_status" name="new_status">
-                    <option>Processing</option>
-                    <option>Released</option>
-                </select>
-
-                <button class="btn" style="margin-top:16px; width:100%">Update status</button>
-            </form>
-        </div>
-
+            <div style="display:flex; gap:10px; margin-top:16px">
+                <button class="btn">Save resident</button>
+                <?php if ((int) $form['resident_id'] > 0): ?>
+                    <a class="btn s" style="height:38px" href="residents.php">Cancel</a>
+                <?php endif; ?>
+            </div>
+        </form>
     </div>
+
 </div>
 <?php include "footer.php"; ?>
