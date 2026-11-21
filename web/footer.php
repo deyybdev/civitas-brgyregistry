@@ -1,5 +1,6 @@
-    </main>
+</main>
 </div>
+<script src="js/searchable.js"></script>
 <script>
     // Switch theme on click and remember the choice
     document.getElementById("theme-toggle").addEventListener("click", function () {

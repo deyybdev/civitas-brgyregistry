@@ -74,7 +74,7 @@ $statusFilter = $_GET['status'] ?? '';
 $like = "%" . $q . "%";
 
 $stmt = $conn->prepare("SELECT r.resident_id, r.last_name, r.first_name, r.middle_name, r.birth_date,
-        r.contact_number, r.status, p.purok_name, h.house_number, h.street
+        r.contact_number, r.status, p.purok_name, h.household_name, h.house_number, h.street
     FROM Resident r
     JOIN Household h ON h.household_id = r.household_id
     JOIN Purok p ON p.purok_id = h.purok_id
@@ -87,9 +87,9 @@ $stmt->execute();
 $residents = $stmt->get_result();
 
 $puroks = $conn->query("SELECT purok_id, purok_name FROM Purok ORDER BY purok_id")->fetch_all(MYSQLI_ASSOC);
-$households = $conn->query("SELECT h.household_id, p.purok_name, h.house_number, h.street
+$households = $conn->query("SELECT h.household_id, h.household_name, p.purok_name, h.house_number, h.street
     FROM Household h JOIN Purok p ON p.purok_id = h.purok_id
-    ORDER BY p.purok_id, h.street, h.house_number")->fetch_all(MYSQLI_ASSOC);
+    ORDER BY p.purok_id, h.household_name, h.house_number")->fetch_all(MYSQLI_ASSOC);
 
 $title = "Residents";
 $active = "residents.php";
@@ -123,15 +123,15 @@ include "header.php";
         <div class="tw">
             <table>
                 <tr>
-                    <th>ID</th><th>Name</th><th>Birth date</th><th>Contact</th><th>Purok / Household</th><th>Status</th><th></th>
+                    <th>ID</th><th>Name</th><th>Birth date</th><th>Contact</th><th>Household</th><th>Status</th><th></th>
                 </tr>
                 <?php while ($r = $residents->fetch_assoc()): ?>
                     <tr>
                         <td><?= $r['resident_id'] ?></td>
-                        <td><?= h($r['last_name'] . ', ' . $r['first_name'] . ' ' . $r['middle_name']) ?></td>
+                        <td><a href="resident.php?id=<?= $r['resident_id'] ?>" style="color:inherit; font-weight:500"><?= h($r['last_name'] . ', ' . $r['first_name'] . ' ' . $r['middle_name']) ?></a></td>
                         <td><?= h($r['birth_date']) ?></td>
                         <td><?= h($r['contact_number'] ?? '-') ?></td>
-                        <td><?= h($r['purok_name'] . ' / ' . $r['house_number'] . ' ' . $r['street']) ?></td>
+                        <td><?= h($r['household_name'] . ' (' . $r['purok_name'] . ', ' . $r['house_number'] . ' ' . $r['street'] . ')') ?></td>
                         <td><?= badge($r['status']) ?></td>
                         <td>
                             <div class="actions">
@@ -175,7 +175,7 @@ include "header.php";
                 <option value="">Select household</option>
                 <?php foreach ($households as $hh): ?>
                     <option value="<?= $hh['household_id'] ?>"<?= sel($form['household_id'], $hh['household_id']) ?>>
-                        <?= h($hh['purok_name'] . ' - ' . $hh['house_number'] . ' ' . $hh['street']) ?>
+                        <?= h($hh['household_name'] . ' (' . $hh['purok_name'] . ', ' . $hh['house_number'] . ' ' . $hh['street'] . ')') ?>
                     </option>
                 <?php endforeach; ?>
             </select>

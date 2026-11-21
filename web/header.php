@@ -66,14 +66,14 @@ function badge($status)
         try { document.documentElement.dataset.theme = localStorage.getItem("theme") || "light"; }
         catch (e) { document.documentElement.dataset.theme = "light"; }
     </script>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=<?= filemtime(__DIR__ . '/css/style.css') ?>">
 </head>
 <body>
 <div class="app">
 
     <nav class="sb">
         <a class="logo" href="index.php">
-            <img src="images/civitas-mark.svg" alt=""><span>Civitas</span>
+            <img src="images/civitas-mark.svg" alt=""><span style="margin-right:-0.28em">Civitas</span>
         </a>
         <?php foreach ($menu as $file => [$label, $iconName]): ?>
             <a href="<?= $file ?>" class="<?= $active === $file ? 'on' : '' ?>">
@@ -82,8 +82,8 @@ function badge($status)
         <?php endforeach; ?>
 
         <button class="theme" id="theme-toggle" type="button">
-            <span class="to-dark"><?= icon('moon') ?>Dark mode</span>
-            <span class="to-light"><?= icon('sun') ?>Light mode</span>
+            <span class="to-dark" style="justify-content:center"><?= icon('moon') ?>Dark mode</span>
+            <span class="to-light" style="justify-content:center"><?= icon('sun') ?>Light mode</span>
         </button>
     </nav>
 

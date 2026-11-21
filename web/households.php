@@ -114,7 +114,7 @@ include "header.php";
     <div class="card" style="flex:2; min-width:440px">
         <form class="filters" method="get" action="households.php">
             <input class="f" name="q" value="<?= h($q) ?>" placeholder="Search family name or street" aria-label="Search households">
-            <select name="purok" aria-label="Purok">
+            <select name="purok" aria-label="Purok" data-search>
                 <option value="0">All puroks</option>
                 <?php foreach ($puroks as $p): ?>
                     <option value="<?= $p['purok_id'] ?>"<?= sel($purokFilter, $p['purok_id']) ?>><?= h($p['purok_name']) ?></option>
@@ -185,7 +185,7 @@ include "header.php";
                 <input class="f" id="household_name" name="household_name" value="<?= h($form['household_name']) ?>" placeholder="For example: Asaytuno Family" required>
 
                 <label for="purok_id">Purok</label>
-                <select id="purok_id" name="purok_id" required>
+                <select id="purok_id" name="purok_id" required data-search>
                     <option value="">Select purok</option>
                     <?php foreach ($puroks as $p): ?>
                         <option value="<?= $p['purok_id'] ?>"<?= sel($form['purok_id'], $p['purok_id']) ?>><?= h($p['purok_name']) ?></option>

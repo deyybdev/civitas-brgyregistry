@@ -43,7 +43,7 @@ include "header.php";
         <h3>Request details</h3>
         <form method="post" action="request_new.php">
             <label for="resident_id">Resident</label>
-            <select id="resident_id" name="resident_id" required>
+            <select id="resident_id" name="resident_id" required data-search>
                 <option value="">Select resident</option>
                 <?php foreach ($residents as $r): ?>
                     <option value="<?= $r['resident_id'] ?>"<?= sel($selectedResident, $r['resident_id']) ?>>
@@ -88,7 +88,8 @@ include "header.php";
                 <?php endwhile; ?>
             </table>
         </div>
-        <p class="sub" style="margin-top:12px"><a href="requests.php">Go to Requests &amp; Payments</a> to record a payment.</p>
+        <p class="sub" style="margin:12px 0 8px">Need to record a payment?</p>
+        <a class="btn s" href="requests.php">Go to Requests &amp; Payments</a>
     </div>
 
 </div>
